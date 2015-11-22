@@ -38,6 +38,13 @@ void error(char *msg)
   exit(1);
 }
 
+struct Packet
+{
+  int seqNum;
+  int dataLen;
+  char data[BUFSIZE - 2*sizeof(int)];
+};
+
 int main(int argc, char *argv[])
 {
   int sockfd, recvlen;
@@ -45,6 +52,7 @@ int main(int argc, char *argv[])
   socklen_t cli_len = sizeof(cli_addr);
   struct sigaction sa;          // for signal SIGCHLD
   char buf[BUFSIZE];
+  struct Packet pkt;
 
 	// Read arguments
 	int portno = DEFAULT_PORTNO;
@@ -82,6 +90,8 @@ int main(int argc, char *argv[])
 		if (recvlen == -1) {
 			error("ERROR on receiving request");
 		}
+    memcpy(&pkt, buf, BUFSIZE);
+    printf("seqNum: %d, dataLen: %d, data: %s\n", pkt.seqNum, pkt.dataLen, pkt.data);
 		sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr *) &cli_addr, cli_len);
 	}
 

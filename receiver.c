@@ -11,12 +11,18 @@ const int DEFAULT_PORTNO = 5000;
 const double DEFAULT_PL = 0.10;
 const double DEFAULT_PC = 0.10;
 
-
 void error(char *msg)
 {
     perror(msg);
     exit(0);
 }
+
+struct Packet
+{
+  int seqNum;
+  int dataLen;
+  char data[BUFSIZE - 2*sizeof(int)];
+};
 
 int main(int argc, char *argv[])
 {
@@ -40,14 +46,13 @@ int main(int argc, char *argv[])
         prob_corrupt = atof(argv[5]);
     case 5:
         prob_loss = atof(argv[4]);
-        portno = atoi(argv[2]);
-        break;
     }
-
-    filename = malloc(sizeof(char) * strlen(argv[3]));
+    portno = atoi(argv[2]);
+    
+    filename = malloc(strlen(argv[3]) + 1);
     strcpy(filename, argv[3]);
 
-    hostname = malloc(sizeof(char) * strlen(argv[1]));
+    hostname = malloc(strlen(argv[1]) + 1);
     strcpy(hostname, argv[1]);
 
     printf("argc: %d\n", argc);
@@ -66,9 +71,18 @@ int main(int argc, char *argv[])
     bcopy((char*) server->h_addr, (char*) &serveraddr.sin_addr.s_addr, server->h_length);
     serveraddr.sin_port = htons(portno);
 
-    bzero(buf, BUFSIZE);
-    fgets(buf, BUFSIZE, stdin);
+    // Form file request packet
+    struct Packet request_pkt;
+    request_pkt.seqNum = 0;     // Sequence number for request message starts at 0
+    request_pkt.dataLen = strlen(filename) + 1;
+    memcpy(request_pkt.data, filename, strlen(filename) + 1);
+    memcpy(buf, &request_pkt, BUFSIZE);
+    if (sendto(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) < 0) {
+        error("ERROR sending");
+    }
 
     FILE* out_file = fopen(filename, "a");
     fwrite(buf, strlen(buf), 1, out_file);
+
+    close(sockfd);
 }
