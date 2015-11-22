@@ -25,13 +25,12 @@ struct Packet
 };
 
 // Form file request packet
-int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename, char buf[]) {
+int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
     struct Packet request_pkt;
     request_pkt.seqNum = 0;     // Sequence number for request message starts at 0
     request_pkt.dataLen = strlen(filename) + 1;
     memcpy(request_pkt.data, filename, strlen(filename) + 1);
-    memcpy(buf, &request_pkt, BUFSIZE);
-    return sendto(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
+    return sendto(sockfd, &request_pkt, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
 }
 
 int main(int argc, char *argv[])
@@ -48,7 +47,6 @@ int main(int argc, char *argv[])
     int sockfd;
     struct sockaddr_in serveraddr;
     struct hostent* server;
-    char buf[BUFSIZE];
 
     switch(argc)
     {
@@ -81,7 +79,7 @@ int main(int argc, char *argv[])
     bcopy((char*) server->h_addr, (char*) &serveraddr.sin_addr.s_addr, server->h_length);
     serveraddr.sin_port = htons(portno);
 
-    if (sendFileRequest(sockfd, serveraddr, filename, buf) < 0) {
+    if (sendFileRequest(sockfd, serveraddr, filename) < 0) {
         error("ERROR sending request");
     }
 

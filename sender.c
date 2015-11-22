@@ -45,13 +45,48 @@ struct Packet
   char data[BUFSIZE - 2*sizeof(int)];
 };
 
+void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char *filename)
+{
+  printf("%s", filename);
+  FILE* fp = fopen(filename, "r");
+  struct Packet pkt;
+  if (fp == NULL)   // cannot open file
+  {
+    pkt.seqNum = -1;  // signals error in filename
+    pkt.dataLen = 0;
+    sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
+  }
+  else
+  {
+    struct stat filestat;
+    stat(filename, &filestat);
+    int filesize = filestat.st_size;
+
+    char *file_buf = (char*)malloc(filesize);
+    fread(file_buf, filesize*sizeof(char), sizeof(char), fp);
+
+    pkt.dataLen = BUFSIZE - 2*sizeof(int);
+    int numPackets = filesize / (BUFSIZE - 2*sizeof(int)) + 1;    // at least 1 packet
+    int i = 1;
+    for ( ; i < numPackets; i++)
+    {
+      pkt.seqNum = i;
+      memcpy(pkt.data, file_buf+(i-1)*pkt.dataLen, pkt.dataLen);
+      sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
+    }
+    pkt.dataLen = filesize % (BUFSIZE - 2*sizeof(int));
+    pkt.seqNum = i;
+    memcpy(pkt.data, file_buf+(i-1)*pkt.dataLen, pkt.dataLen);
+    sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
+  }
+}
+
 int main(int argc, char *argv[])
 {
   int sockfd, recvlen;
   struct sockaddr_in serv_addr, cli_addr;
   socklen_t cli_len = sizeof(cli_addr);
   struct sigaction sa;          // for signal SIGCHLD
-  char buf[BUFSIZE];
   struct Packet pkt;
 
 	// Read arguments
@@ -86,13 +121,12 @@ int main(int argc, char *argv[])
   
 	while(1) {
 		printf("Waiting for data\n");
-		recvlen = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &cli_addr, &cli_len);
+		recvlen = recvfrom(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) &cli_addr, &cli_len);
 		if (recvlen == -1) {
 			error("ERROR on receiving request");
 		}
-    memcpy(&pkt, buf, BUFSIZE);
-    printf("seqNum: %d, dataLen: %d, data: %s\n", pkt.seqNum, pkt.dataLen, pkt.data);
-		sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr *) &cli_addr, cli_len);
+    printf("RECEIVED DATA. seqNum: %d, dataLen: %d, data: %s\n", pkt.seqNum, pkt.dataLen, pkt.data);
+    sendFile(sockfd, &cli_addr, cli_len, pkt.data);
 	}
 
  //  if (listen(sockfd,5) == -1) {
