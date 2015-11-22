@@ -34,30 +34,30 @@ int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
     return sendto(sockfd, &request_pkt, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
 }
 
-int receiveFile(int sockfd, struct sockaddr_in serveraddr, char* filename)
+int receiveFile(int sockfd, struct sockaddr_in serveraddr)
 {
-    struct Packet* receive_pck;
-    FILE* fp = fopen(filename, "a");
+    struct Packet receive_pck;
+    FILE* fp = fopen("recv.txt", "a");
+    struct sockaddr_in recv_addr;
+    socklen_t recv_addr_len = sizeof(recv_addr);
 
     while(1)
     {
-        if (recvfrom(sockfd, (void*) receive_pck, BUFSIZE, 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr)) < 0)
+        if (recvfrom(sockfd, (void*) &receive_pck, BUFSIZE, 0, (struct sockaddr *) &recv_addr, &recv_addr_len) < 0)
             error("ERROR: Failed to receive the file\n");
 
-        if (receive_pck->seqNum < 0)
+        if (receive_pck.seqNum < 0)
         {
-            printf("ERROR: File does not exist\n", filename);
-            error("");
+            return -1;
         }
 
         //fprintf(fp, receive_pck->data);
-        printf("%s", receive_pck->data);
+        printf("%s", receive_pck.data);
 
-        if (receive_pck->dataLen < 1016)
+        if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
             break;
     }
 
-    printf("\nSuccessfully transmitted %s", filename);
     return 0;
 }
 
@@ -109,6 +109,9 @@ int main(int argc, char *argv[])
 
     if (sendFileRequest(sockfd, serveraddr, filename) < 0) {
         error("ERROR: Send request failed\n");
+    }
+    if (receiveFile(sockfd, serveraddr) < 0) {
+        error("ERROR: File does not exist\n");
     }
 
     close(sockfd);
