@@ -46,6 +46,12 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr, char* filename)
         if (recvfrom(sockfd, (void*) receive_pck, BUFSIZE, 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr)) < 0)
             error("ERROR: Failed to receive the file\n");
 
+        if (receive_pck->seqNum < 0)
+        {
+            printf("ERROR: File does not exist\n", filename);
+            error("");
+        }
+
         //fprintf(fp, receive_pck->data);
         printf("%s", receive_pck->data);
 
