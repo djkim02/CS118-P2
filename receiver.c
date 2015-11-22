@@ -38,7 +38,6 @@ int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename, c
 
 int receiveFile(int sockfd, struct sockaddr_in serveraddr, char* filename)
 {
-    printf("Requesting Sequence Number %d\n", SEQNUM);
     struct Packet* receive_pck;
     FILE* fp = fopen(filename, "a");
 
@@ -47,7 +46,8 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr, char* filename)
         if (recvfrom(sockfd, (void*) receive_pck, BUFSIZE, 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr)) < 0)
             error("ERROR: Failed to receive the file\n");
 
-        fprintf(fp, receive_pck->data);
+        //fprintf(fp, receive_pck->data);
+        printf("%s", receive_pck->data);
 
         if (receive_pck->dataLen < 1016)
             break;
