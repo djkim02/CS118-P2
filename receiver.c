@@ -53,6 +53,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr, char* filename)
             break;
     }
 
+    printf("\nSuccessfully transmitted %s", filename);
     return 0;
 }
 
