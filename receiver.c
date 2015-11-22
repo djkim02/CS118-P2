@@ -7,6 +7,7 @@
 #include <string.h>
 #define BUFSIZE 1024
 
+int SEQNUM = 0;
 const int DEFAULT_PORTNO = 5000;
 const double DEFAULT_PL = 0.10;
 const double DEFAULT_PC = 0.10;
@@ -27,10 +28,37 @@ struct Packet
 // Form file request packet
 int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
     struct Packet request_pkt;
-    request_pkt.seqNum = 0;     // Sequence number for request message starts at 0
+    request_pkt.seqNum = SEQNUM;     // Sequence number for request message starts at 0
     request_pkt.dataLen = strlen(filename) + 1;
     memcpy(request_pkt.data, filename, strlen(filename) + 1);
     return sendto(sockfd, &request_pkt, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
+}
+
+int receiveFile(int sockfd, struct sockaddr_in serveraddr, char* filename)
+{
+    struct Packet* receive_pck;
+    FILE* fp = fopen(filename, "a");
+
+    while(1)
+    {
+        if (recvfrom(sockfd, (void*) receive_pck, BUFSIZE, 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr)) < 0)
+            error("ERROR: Failed to receive the file\n");
+
+        if (receive_pck->seqNum < 0)
+        {
+            printf("ERROR: File does not exist\n", filename);
+            error("");
+        }
+
+        //fprintf(fp, receive_pck->data);
+        printf("%s", receive_pck->data);
+
+        if (receive_pck->dataLen < 1016)
+            break;
+    }
+
+    printf("\nSuccessfully transmitted %s", filename);
+    return 0;
 }
 
 int main(int argc, char *argv[])
@@ -72,7 +100,7 @@ int main(int argc, char *argv[])
 
     server = gethostbyname(hostname);
     if (server == NULL)
-        error("ERROR: No such hostname");
+        error("ERROR: No such hostname\n");
 
     bzero((char*) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
@@ -80,7 +108,7 @@ int main(int argc, char *argv[])
     serveraddr.sin_port = htons(portno);
 
     if (sendFileRequest(sockfd, serveraddr, filename) < 0) {
-        error("ERROR sending request");
+        error("ERROR: Send request failed\n");
     }
 
     close(sockfd);
