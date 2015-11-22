@@ -14,6 +14,8 @@
 #include <sys/stat.h>		// stat()
 #include <time.h>
 
+#define BUFSIZE 1024
+
 const int DEFAULT_PORTNO = 5000;
 const int DEFAULT_CWND = 4;
 const double DEFAULT_PL = 0.10;
@@ -38,6 +40,12 @@ void error(char *msg)
 
 int main(int argc, char *argv[])
 {
+  int sockfd, recvlen;
+  struct sockaddr_in serv_addr, cli_addr;
+  socklen_t cli_len = sizeof(cli_addr);
+  struct sigaction sa;          // for signal SIGCHLD
+  char buf[BUFSIZE];
+
 	// Read arguments
 	int portno = DEFAULT_PORTNO;
   int cwnd = DEFAULT_CWND;
@@ -56,15 +64,6 @@ int main(int argc, char *argv[])
   		break;
   }
 
-  printf("argc: %d", argc);
-
-	printf("PORT: %d, CWND: %d, PL: %f, PC: %f", portno, cwnd, prob_loss, prob_corrupt);
-
-  int sockfd, pid;
-  socklen_t clilen;
-  struct sockaddr_in serv_addr, cli_addr;
-  struct sigaction sa;          // for signal SIGCHLD
-
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0) 
     error("ERROR opening socket");
@@ -78,7 +77,12 @@ int main(int argc, char *argv[])
 	}
   
 	while(1) {
-		
+		printf("Waiting for data\n");
+		recvlen = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &cli_addr, &cli_len);
+		if (recvlen == -1) {
+			error("ERROR on receiving request");
+		}
+		sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr *) &cli_addr, cli_len);
 	}
 
  //  if (listen(sockfd,5) == -1) {
