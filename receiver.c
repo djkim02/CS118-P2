@@ -7,7 +7,7 @@
 #include <string.h>
 #define BUFSIZE 1024
 
-int SEQNUM = 0;
+int SEQNUM = 1;
 const int DEFAULT_PORTNO = 5000;
 const double DEFAULT_PL = 0.0;
 const double DEFAULT_PC = 0.0;
@@ -35,7 +35,7 @@ int min(int a, int b)
 // Form file request packet
 int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
     struct Packet request_pkt;
-    request_pkt.seqNum = SEQNUM;     // Sequence number for request message starts at 0
+    request_pkt.seqNum = 0;     // Sequence number for request message starts at 0
     request_pkt.dataLen = strlen(filename) + 1;
     memcpy(request_pkt.data, filename, strlen(filename) + 1);
     return sendto(sockfd, &request_pkt, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
@@ -54,16 +54,32 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
             error("ERROR: Failed to receive the file\n");
 
         if (receive_pck.seqNum < 0)
-        {
             return -1;
-        }
+
+        printf("RECEIVER: Received %d bytes for ACK #%d.\n", 
+            min(sizeof(receive_pck.data), receive_pck.dataLen), SEQNUM);
 
         fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
+
+        if (receive_pck.seqNum == SEQNUM)
+        {
+            SEQNUM++;
+            fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
+        }
+
+        struct Packet ack_pck;
+        ack_pck.seqNum = SEQNUM;
+
+        if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+        {
+            printf("RECEIVER: Sent ACK #%d to the sender.\n", SEQNUM);
+        }
 
         if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
             break;
     }
 
+    printf("Successfully received the file!\n");
     return 0;
 }
 
