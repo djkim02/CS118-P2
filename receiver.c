@@ -9,8 +9,8 @@
 
 int SEQNUM = 0;
 const int DEFAULT_PORTNO = 5000;
-const double DEFAULT_PL = 0.10;
-const double DEFAULT_PC = 0.10;
+const double DEFAULT_PL = 0.0;
+const double DEFAULT_PC = 0.0;
 
 void error(char *msg)
 {

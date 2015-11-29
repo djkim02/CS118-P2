@@ -18,8 +18,8 @@
 
 const int DEFAULT_PORTNO = 5000;
 const int DEFAULT_CWND = 4;
-const double DEFAULT_PL = 0.10;
-const double DEFAULT_PC = 0.10;
+const double DEFAULT_PL = 0.0;
+const double DEFAULT_PC = 0.0;
 
 // Function prototypes
 char* processRequestMessage(int);
