@@ -25,6 +25,13 @@ struct Packet
   char data[BUFSIZE - 2*sizeof(int)];
 };
 
+int min(int a, int b)
+{
+    if (a < b)
+        return a;
+    return b;
+}
+
 // Form file request packet
 int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
     struct Packet request_pkt;
@@ -37,7 +44,7 @@ int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
 int receiveFile(int sockfd, struct sockaddr_in serveraddr)
 {
     struct Packet receive_pck;
-    FILE* fp = fopen("recv.txt", "a");
+    FILE* fp = fopen("filerecv", "a");
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 
@@ -51,8 +58,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
             return -1;
         }
 
-        //fprintf(fp, receive_pck->data);
-        printf("%s", receive_pck.data);
+        fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
 
         if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
             break;
