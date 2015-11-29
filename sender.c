@@ -16,27 +16,10 @@
 
 #define BUFSIZE 1024
 
-const int DEFAULT_PORTNO = 5000;
-const int DEFAULT_CWND = 4;     // given in unit of bytes
-const double DEFAULT_PL = 0.0;
-const double DEFAULT_PC = 0.0;
-
-// Function prototypes
-char* processRequestMessage(int);
-void sendHttpResponse(int, char*);
-void writeErrorMessage(int);
-const char* getContentType (char*);
-
-void sigchld_handler(int s)
-{
-  while(waitpid(-1, NULL, WNOHANG) > 0);
-}
-
-void error(char *msg)
-{
-  perror(msg);
-  exit(1);
-}
+int PORTNO = 5000;
+int CWND = 1024;     // given in unit of bytes
+double PL = 0.0;
+double PC = 0.0;
 
 // For DATA packets:
 //  seqNum = sending packet #
@@ -48,18 +31,24 @@ struct Packet
   char data[BUFSIZE - 2*sizeof(int)];
 };
 
-void sendPacket(struct Packet *pck, int index, FILE *fp, )
+void error(char *msg)
+{
+  perror(msg);
+  exit(1);
+}
 
 void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char *filename)
 {
   printf("%s", filename);
   FILE* fp = fopen(filename, "r");
   struct Packet pkt;
+  struct Packet ack_pkt;
   if (fp == NULL)   // cannot open file
   {
     pkt.seqNum = -1;  // signals error in filename
     pkt.dataLen = 0;
     sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
+    printf("ERROR opening file\n");
   }
   else
   {
@@ -70,22 +59,46 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
     char *file_buf = (char*)malloc(filesize);
     fread(file_buf, filesize*sizeof(char), sizeof(char), fp);
 
-    int base = 0;
+    int base = 1;
+    int nextSeqNum = 1;
     int maxDataLen = BUFSIZE - 2*sizeof(int);
-    pkt.dataLen = maxDataLen
+    pkt.dataLen = maxDataLen;
     int numPackets = filesize / (BUFSIZE - 2*sizeof(int)) + 1;    // at least 1 packet
-    int i = 1;
-    for ( ; i < numPackets; i++)
+
+    // Send initial packets to fill the window
+    while (nextSeqNum*maxDataLen <= CWND)    // TODO(yjchoi): if CWND is smaller than file size?
     {
-      pkt.seqNum = i;
-      memcpy(pkt.data, file_buf+(i-1)*maxDataLen, pkt.dataLen);
-      sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
+      pkt.seqNum = nextSeqNum;
+      memcpy(pkt.data, file_buf+(nextSeqNum-1)*maxDataLen, pkt.dataLen);
+      if (sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len) < 0) {
+        printf("ERROR on sending DATA #%d\n", nextSeqNum);
+      } else {
+        printf("SENDER: Sent DATA #%d\n", nextSeqNum);
+        nextSeqNum++;
+      }
     }
-    pkt.dataLen = filesize % (BUFSIZE - 2*sizeof(int));
-    pkt.seqNum = i;
-    memcpy(pkt.data, file_buf+(i-1)*maxDataLen, pkt.dataLen);
-    sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
-  }
+
+    while (base <= numPackets)
+    {
+      if (recvfrom(sockfd, &ack_pkt, BUFSIZE, 0, (struct sockaddr *) &cli_addr, &cli_len) > 0)
+      {
+        printf("SENDER: Received ACK #%d\n", ack_pkt.seqNum);
+        base = ack_pkt.seqNum + 1;
+        if ((nextSeqNum-base+1)*maxDataLen <= CWND)
+        {
+          // if nextSeqNum == numPackets-1 and can fit in window?
+          pkt.seqNum = nextSeqNum;
+          pkt.dataLen = nextSeqNum == numPackets ? filesize % maxDataLen : maxDataLen;
+          memcpy(pkt.data, file_buf(nextSeqNum-1)*maxDataLen, pkt.dataLen);
+          if (sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len) < 0) {
+            printf("ERROR on sending DATA #%d\n", nextSeqNum);
+          } else {
+            printf("SENDER: Sent DATA #%d\n", nextSeqNum);
+            nextSeqNum++;
+          }
+        }
+      }
+    }
 }
 
 int main(int argc, char *argv[])
@@ -93,24 +106,19 @@ int main(int argc, char *argv[])
   int sockfd, recvlen;
   struct sockaddr_in serv_addr, cli_addr;
   socklen_t cli_len = sizeof(cli_addr);
-  struct sigaction sa;          // for signal SIGCHLD
   struct Packet pkt;
 
   // Read arguments
-  int portno = DEFAULT_PORTNO;
-  int cwnd = DEFAULT_CWND;
-  double prob_loss = DEFAULT_PL;
-  double prob_corrupt = DEFAULT_PC;
   switch(argc)
   {
     case 5:
-      prob_corrupt = atof(argv[4]);
+      PC = atof(argv[4]);
     case 4:
-      prob_loss = atof(argv[3]);
+      PL = atof(argv[3]);
     case 3:
-      cwnd = atoi(argv[2]);
+      CWND = atoi(argv[2]);
     case 2:
-      portno = atoi(argv[1]);
+      PORTNO = atoi(argv[1]);
       break;
   }
 
@@ -120,7 +128,7 @@ int main(int argc, char *argv[])
   bzero((char *) &serv_addr, sizeof(serv_addr));
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;
-  serv_addr.sin_port = htons(portno);
+  serv_addr.sin_port = htons(PORTNO);
      
   if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
     error("ERROR on binding");
@@ -135,159 +143,3 @@ int main(int argc, char *argv[])
     printf("RECEIVED DATA. seqNum: %d, dataLen: %d, data: %s\n", pkt.seqNum, pkt.dataLen, pkt.data);
     sendFile(sockfd, &cli_addr, cli_len, pkt.data);
   }
-
- //  if (listen(sockfd,5) == -1) {
- //    error("listen");
- //  }
-  
- //  clilen = sizeof(cli_addr);
-
-  // /****** Kill Zombie Processes ******/
-  // sa.sa_handler = sigchld_handler; // reap all dead processes
-  // sigemptyset(&sa.sa_mask);
-  // sa.sa_flags = SA_RESTART;
-  // if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-  //  error("sigaction");
-  // }
-  // /*********************************/
-     
-  // while (1) {
-  //  newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-
-  //  if (newsockfd < 0) 
-  //    error("ERROR on accept");
-
-  //  pid = fork(); //create a new process
-  //  if (pid < 0)
-  //    error("ERROR on fork");
-
-  //  if (pid == 0)  { // fork() returns a value of 0 to the child process
-  //    close(sockfd);
-  //    char *filename = processRequestMessage(newsockfd);
-  //    sendHttpResponse(newsockfd, filename);
-  //    exit(0);
-  //  }
-  //  else //returns the process ID of the child process to the parent
-  //    close(newsockfd); // parent doesn't need this 
-  // } /* end of while */
-  // return 0; /* we never get here */
-}
-
-/******** processRequestMessage() ********
- There is a separate instance of this function 
- for each connection.  It handles all communication
- once a connnection has been established.
- *****************************************/
-// char* processRequestMessage(int sock)
-// {
-//  // TODO: check if request message size > buffer_size and dynamically resize buffer
-//  int buffer_size = 512;
-//  char buffer[buffer_size];
-//  bzero(buffer,buffer_size);
-//  if (read(sock, buffer, buffer_size-1) < 0) {
-//    error("ERROR reading from socket");
-//  }
-//  printf("%s",buffer);
-
-//  if (strstr(buffer, "GET ")) { // if GET request
-//    int i = 4;
-//    while (buffer[i] != ' ' && i++);
-//    char* filename = (char*)malloc(i-4);
-//    strncpy(filename, buffer+5, i-5); // get filename, excluding the first '/'
-//    filename[i-3] = '\0';
-//    return filename;
-//  }
-// }
-
-// void writeErrorMessage(int sock) {
-//  int buffer_size = 50;
-//  char msg[buffer_size];
-//  strcat(msg, STATUS_NOT_FOUND);
-//  write(sock, msg, strlen(msg));
-//  // TODO: 404 Error HTML
-// }
-
-// void sendHttpResponse(int sock, char* filename) {
-//  FILE* fp = fopen(filename, "r");
-//  struct stat filestat;
-//  int buffer_size = 1024;
-//  char msg[buffer_size];
-//  bzero(msg, buffer_size);
-
-//  if (fp == NULL) {
-//    writeErrorMessage(sock);
-//    return;
-//  }
-
-//  // Getting current date
-//  char date[128] = "Date: ";
-//  char date_time[40];
-//  time_t current_time;
-//  time(&current_time);
-//  struct tm* gmt_time = (struct tm*)gmtime(&current_time);
-//  strftime(date_time, 40, "%a, %d %b %Y %T %Z", gmt_time);  // null-terminated string of GMT time
-//  strcat(date, date_time);
-//  strcat(date, "\r\n");
-
-//  // Getting the last modified date
-//  stat(filename, &filestat);
-//  char modified[128] = "Last-Modified: ";
-//  char modified_time[40];
-//  time_t last_modified_time = filestat.st_mtime;
-//  time(&last_modified_time);
-//  struct tm* gmt_last_modified_time = (struct tm*)gmtime(&last_modified_time);
-//  strftime(modified_time, 40, "%a, %d %b %Y %T %Z", gmt_last_modified_time);
-//  strcat(modified, modified_time);
-//  strcat(modified, "\r\n");
-
-//  // Getting the size of the file
-//  char file_size[128] = "Content-Length: ";
-//  char len[40];
-//  int size = filestat.st_size;
-//  sprintf(len, "%d", (unsigned int)size);
-//  strcat(file_size, len);
-//  strcat(file_size, "\r\n");
-
-//  // Getting content type
-//  const char* content_type = getContentType(filename);
-//  if (content_type == NULL) {
-//    writeErrorMessage(sock);
-//    printf("Error: Content-Type not found!");
-//    return;
-//  }
-
-//  // Constructing the message
-//  strcat(msg, STATUS_OK);
-//  strcat(msg, CONNECTION_CLOSE);
-//  strcat(msg, date);
-//  strcat(msg, SERVER_NAME);
-//  strcat(msg, modified);
-//  strcat(msg, file_size);
-//  strcat(msg, content_type);
-//  strcat(msg, "\r\n");
-  
-//  write(sock, msg, strlen(msg));  // write HTTP response header
-//  printf("%s", msg);
-    
-//  char *file_buf = (char*)malloc(size);
-//  fread(file_buf, size*sizeof(char), sizeof(char), fp);
-//  write(sock, file_buf, size);
-  
-//  fclose(fp);
-//  free(file_buf);
-//  free(filename);
-// }
-
-// const char* getContentType (char* filename) {
-//  if (strstr(filename, ".html")) {
-//    return HTML;
-//  } else if (strstr(filename, ".jpeg")) {
-//    return JPEG;
-//  } else if (strstr(filename, ".jpg")) {
-//    return JPG;
-//  } else if (strstr(filename, ".gif")) {
-//    return GIF;
-//  } else {
-//    return TXT;
-//  }
-// }
