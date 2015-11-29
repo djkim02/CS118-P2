@@ -17,7 +17,7 @@
 #define BUFSIZE 1024
 
 const int DEFAULT_PORTNO = 5000;
-const int DEFAULT_CWND = 4;
+const int DEFAULT_CWND = 4;     // given in unit of bytes
 const double DEFAULT_PL = 0.0;
 const double DEFAULT_PC = 0.0;
 
@@ -38,6 +38,9 @@ void error(char *msg)
   exit(1);
 }
 
+// For DATA packets:
+//  seqNum = sending packet #
+//  dataLen = 
 struct Packet
 {
   int seqNum;
@@ -65,18 +68,19 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
     char *file_buf = (char*)malloc(filesize);
     fread(file_buf, filesize*sizeof(char), sizeof(char), fp);
 
-    pkt.dataLen = BUFSIZE - 2*sizeof(int);
+    int maxDataLen = BUFSIZE - 2*sizeof(int);
+    pkt.dataLen = maxDataLen
     int numPackets = filesize / (BUFSIZE - 2*sizeof(int)) + 1;    // at least 1 packet
     int i = 1;
     for ( ; i < numPackets; i++)
     {
       pkt.seqNum = i;
-      memcpy(pkt.data, file_buf+(i-1)*pkt.dataLen, pkt.dataLen);
+      memcpy(pkt.data, file_buf+(i-1)*maxDataLen, pkt.dataLen);
       sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
     }
     pkt.dataLen = filesize % (BUFSIZE - 2*sizeof(int));
     pkt.seqNum = i;
-    memcpy(pkt.data, file_buf+(i-1)*pkt.dataLen, pkt.dataLen);
+    memcpy(pkt.data, file_buf+(i-1)*maxDataLen, pkt.dataLen);
     sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
   }
 }
