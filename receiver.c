@@ -8,9 +8,9 @@
 #define BUFSIZE 1024
 
 int SEQNUM = 1;
-const int DEFAULT_PORTNO = 5000;
-const double DEFAULT_PL = 0.0;
-const double DEFAULT_PC = 0.0;
+int PORTNO = 5000;
+double PL = 0.0;
+double PC = 0.0;
 
 void error(char *msg)
 {
@@ -24,6 +24,11 @@ struct Packet
   int dataLen;
   char data[BUFSIZE - 2*sizeof(int)];
 };
+
+double rand_percent()
+{
+  return (double)rand() / (double)RAND_MAX;
+}
 
 int min(int a, int b)
 {
@@ -44,6 +49,7 @@ int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
 int receiveFile(int sockfd, struct sockaddr_in serveraddr)
 {
     struct Packet receive_pck;
+    struct Packet ack_pck;
     FILE* fp = fopen("filerecv", "a");
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
@@ -56,28 +62,43 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
         if (receive_pck.seqNum < 0)
             return -1;
 
-        printf("RECEIVER: Received %d bytes for ACK #%d.\n", 
-            min(sizeof(receive_pck.data), receive_pck.dataLen), SEQNUM);
-
-        fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
-
-        if (receive_pck.seqNum == SEQNUM)
+        if (rand_percent() < PC)
         {
-            SEQNUM++;
-            fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
+          printf("RECEIVER: Received corrupted DATA\n");
         }
-
-        struct Packet ack_pck;
-        ack_pck.seqNum = SEQNUM;
-
-        if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+        else if (rand_percent() >= PL)
         {
-            printf("RECEIVER: Sent ACK #%d to the sender.\n", SEQNUM);
-        }
+            if (receive_pck.seqNum == SEQNUM)
+            {
+                printf("RECEIVER: Received %d bytes for DATA #%d.\n", min(sizeof(receive_pck.data), receive_pck.dataLen), receive_pck.seqNum);
+                fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
+                ack_pck.seqNum = SEQNUM;
+                if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+                {
+                    printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
+                }
+                SEQNUM++;
+            }
+            else
+            {
+                if (receive_pck.seqNum < SEQNUM)
+                    printf("RECEIVER: Received duplicate DATA #%d.\n", receive_pck.seqNum);
+                else
+                    printf("RECEIVER: Received out-of-order DATA #%d.\n", receive_pck.seqNum);
 
-        if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
-            break;
+                ack_pck.seqNum = SEQNUM - 1;
+                if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+                {
+                    printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
+                }
+            }
+
+            if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
+                break;
+        }
     }
+
+    // When the last ACK is lost...
 
     printf("Successfully received the file!\n");
     return 0;
@@ -88,9 +109,6 @@ int main(int argc, char *argv[])
     if (argc < 4)
         error("ERROR: Invalid Arguments. Arguments should be the <sender_hostname> <sender_portnumber> <filename>\n");
     
-    int portno = DEFAULT_PORTNO;
-    double prob_loss = DEFAULT_PL;
-    double prob_corrupt = DEFAULT_PC;
     char* filename;
     char* hostname;
 
@@ -101,11 +119,11 @@ int main(int argc, char *argv[])
     switch(argc)
     {
     case 6:
-        prob_corrupt = atof(argv[5]);
+        PC = atof(argv[5]);
     case 5:
-        prob_loss = atof(argv[4]);
+        PL = atof(argv[4]);
     }
-    portno = atoi(argv[2]);
+    PORTNO = atoi(argv[2]);
     
     filename = malloc(strlen(argv[3]) + 1);
     strcpy(filename, argv[3]);
@@ -114,7 +132,7 @@ int main(int argc, char *argv[])
     strcpy(hostname, argv[1]);
 
     printf("argc: %d\n", argc);
-    printf("Sender Hostname: %s, Sender Port Number: %d, File name: %s, PL: %f, PC: %f\n", hostname, portno, filename, prob_loss, prob_corrupt);
+    printf("Sender Hostname: %s, Sender Port Number: %d, File name: %s, PL: %f, PC: %f\n", hostname, PORTNO, filename, PL, PC);
 
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0)
@@ -127,7 +145,7 @@ int main(int argc, char *argv[])
     bzero((char*) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     bcopy((char*) server->h_addr, (char*) &serveraddr.sin_addr.s_addr, server->h_length);
-    serveraddr.sin_port = htons(portno);
+    serveraddr.sin_port = htons(PORTNO);
 
     if (sendFileRequest(sockfd, serveraddr, filename) < 0) {
         error("ERROR: Send request failed\n");

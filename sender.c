@@ -14,6 +14,8 @@
 #include <sys/stat.h>   // stat()
 #include <time.h>
 
+#include <errno.h>
+
 #define BUFSIZE 1024
 
 int PORTNO = 5000;
@@ -37,9 +39,13 @@ void error(char *msg)
   exit(1);
 }
 
+double rand_percent()
+{
+  return (double)rand() / (double)RAND_MAX;
+}
+
 void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char *filename)
 {
-  printf("%s", filename);
   FILE* fp = fopen(filename, "r");
   struct Packet pkt;
   struct Packet ack_pkt;
@@ -65,40 +71,77 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
     pkt.dataLen = maxDataLen;
     int numPackets = filesize / (BUFSIZE - 2*sizeof(int)) + 1;    // at least 1 packet
 
+    time_t timer;
+    time(&timer);
     // Send initial packets to fill the window
-    while (nextSeqNum*maxDataLen <= CWND)    // TODO(yjchoi): if CWND is smaller than file size?
+    while (nextSeqNum*maxDataLen <= CWND)    // TODO(yjchoi): if CWND is larger than file size?
     {
       pkt.seqNum = nextSeqNum;
+      bzero(pkt.data, maxDataLen);
       memcpy(pkt.data, file_buf+(nextSeqNum-1)*maxDataLen, pkt.dataLen);
       if (sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len) < 0) {
         printf("ERROR on sending DATA #%d\n", nextSeqNum);
       } else {
-        printf("SENDER: Sent DATA #%d\n", nextSeqNum);
+        printf("SENDER: Sent %d bytes for DATA #%d\n", pkt.dataLen, nextSeqNum);
         nextSeqNum++;
       }
     }
 
     while (base <= numPackets)
     {
-      if (recvfrom(sockfd, &ack_pkt, BUFSIZE, 0, (struct sockaddr *) &cli_addr, &cli_len) > 0)
+      if (time(NULL) > timer + 5)
       {
-        printf("SENDER: Received ACK #%d\n", ack_pkt.seqNum);
-        base = ack_pkt.seqNum + 1;
-        if ((nextSeqNum-base+1)*maxDataLen <= CWND)
+        printf("SENDER: Timeout on #%d!\n", base);
+        time(&timer);
+        int i = base;
+        for ( ; i < nextSeqNum; i++)
         {
-          // if nextSeqNum == numPackets-1 and can fit in window?
-          pkt.seqNum = nextSeqNum;
-          pkt.dataLen = nextSeqNum == numPackets ? filesize % maxDataLen : maxDataLen;
-          memcpy(pkt.data, file_buf(nextSeqNum-1)*maxDataLen, pkt.dataLen);
+          pkt.seqNum = i;
+          pkt.dataLen = i == numPackets ? filesize % maxDataLen : maxDataLen;
+          bzero(pkt.data, maxDataLen);
+          memcpy(pkt.data, file_buf+(i-1)*maxDataLen, pkt.dataLen);
           if (sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len) < 0) {
-            printf("ERROR on sending DATA #%d\n", nextSeqNum);
+            printf("ERROR on retransmitting DATA #%d\n", i);
           } else {
-            printf("SENDER: Sent DATA #%d\n", nextSeqNum);
-            nextSeqNum++;
+            printf("SENDER: Retransmitted DATA #%d\n", i);
+          }
+        }
+      }
+
+      if (recvfrom(sockfd, &ack_pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, &cli_len) > 0)
+      {
+        if (rand_percent() < PC)
+        {
+          printf("SENDER: Received a corrupted ACK\n");
+        }
+        else if (rand_percent() >= PL)
+        {
+          printf("SENDER: Received ACK #%d\n", ack_pkt.seqNum);
+          if (base == ack_pkt.seqNum)
+          {
+            time(&timer);
+          }
+          base = ack_pkt.seqNum + 1;
+          while ((nextSeqNum-base+1)*maxDataLen <= CWND && nextSeqNum <= numPackets)
+          {
+            // if nextSeqNum == numPackets-1 and can fit in window?
+            pkt.seqNum = nextSeqNum;
+            pkt.dataLen = nextSeqNum == numPackets ? filesize % maxDataLen : maxDataLen;
+            bzero(pkt.data, maxDataLen);
+            memcpy(pkt.data, file_buf+(nextSeqNum-1)*maxDataLen, pkt.dataLen);
+            if (sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len) < 0) {
+              printf("ERROR on sending DATA #%d\n", nextSeqNum);
+            } else {
+              printf("SENDER: Sent %d bytes for DATA #%d\n", pkt.dataLen, nextSeqNum);
+              nextSeqNum++;
+            }
           }
         }
       }
     }
+    close(file_buf);
+  }
+  fclose(fp);
 }
 
 int main(int argc, char *argv[])
@@ -107,6 +150,12 @@ int main(int argc, char *argv[])
   struct sockaddr_in serv_addr, cli_addr;
   socklen_t cli_len = sizeof(cli_addr);
   struct Packet pkt;
+  struct timeval timeout;
+  timeout.tv_sec = 1;  // 1 second;
+  timeout.tv_usec = 0;
+  struct timeval notimeout;
+  notimeout.tv_sec = 0;
+  notimeout.tv_usec = 0;
 
   // Read arguments
   switch(argc)
@@ -135,11 +184,14 @@ int main(int argc, char *argv[])
   }
   
   while(1) {
-    printf("Waiting for data\n");
+    printf("Waiting for request\n");
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&notimeout, sizeof(struct timeval));
     recvlen = recvfrom(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) &cli_addr, &cli_len);
     if (recvlen == -1) {
       error("ERROR on receiving request");
     }
-    printf("RECEIVED DATA. seqNum: %d, dataLen: %d, data: %s\n", pkt.seqNum, pkt.dataLen, pkt.data);
+    printf("SENDER: Received request. Filename: %s\n", pkt.data);
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(struct timeval));
     sendFile(sockfd, &cli_addr, cli_len, pkt.data);
   }
+}
