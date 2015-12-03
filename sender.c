@@ -67,7 +67,7 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
 
     while (base <= numPackets)
     {
-      if (time(NULL) > timer + 5)
+      if (time(NULL) > timer + 1)
       {
         printf("SENDER: Timeout on #%d!\n", base);
         time(&timer);
@@ -129,8 +129,8 @@ int main(int argc, char *argv[])
   socklen_t cli_len = sizeof(cli_addr);
   struct Packet pkt;
   struct timeval timeout;
-  timeout.tv_sec = 1;  // 1 second;
-  timeout.tv_usec = 0;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = 100000; // 100ms
   struct timeval notimeout;
   notimeout.tv_sec = 0;
   notimeout.tv_usec = 0;
@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;
   serv_addr.sin_port = htons(PORTNO);
-     
+
   if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
     error("ERROR on binding");
   }
