@@ -41,7 +41,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
         if (receive_pck.seqNum < 0)
             return -1;
 
-        if (rand_percent() < PC)
+        if (rand_percent() < PC)    // Received corrupted DATA
         {
           printf("RECEIVER: Received corrupted DATA\n");
           if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
@@ -49,7 +49,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
             printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
           }
         }
-        else if (rand_percent() >= PL)
+        else if (rand_percent() >= PL)  // Packet received without loss
         {
             if (receive_pck.seqNum == expectedSeqNum)
             {
