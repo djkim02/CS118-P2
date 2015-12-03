@@ -5,37 +5,13 @@
 #include <netdb.h>      // define structures like hostent
 #include <stdlib.h>
 #include <string.h>
-#define BUFSIZE 1024
+
+#include "utils.h"
 
 int SEQNUM = 1;
 int PORTNO = 5000;
 double PL = 0.0;
 double PC = 0.0;
-
-void error(char *msg)
-{
-    perror(msg);
-    exit(0);
-}
-
-struct Packet
-{
-  int seqNum;
-  int dataLen;
-  char data[BUFSIZE - 2*sizeof(int)];
-};
-
-double rand_percent()
-{
-  return (double)rand() / (double)RAND_MAX;
-}
-
-int min(int a, int b)
-{
-    if (a < b)
-        return a;
-    return b;
-}
 
 // Form file request packet
 int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
@@ -65,6 +41,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
         if (rand_percent() < PC)
         {
           printf("RECEIVER: Received corrupted DATA\n");
+          // Send ACK?
         }
         else if (rand_percent() >= PL)
         {

@@ -9,40 +9,18 @@
 #include <netinet/in.h>  // constants and structures needed for internet domain addresses, e.g. sockaddr_in
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h> /* for the waitpid() system call */
 #include <signal.h> /* signal name macros, and the kill() prototype */
 #include <sys/stat.h>   // stat()
 #include <time.h>
 
 #include <errno.h>
 
-#define BUFSIZE 1024
+#include "utils.h"
 
 int PORTNO = 5000;
 int CWND = 1024;     // given in unit of bytes
 double PL = 0.0;
 double PC = 0.0;
-
-// For DATA packets:
-//  seqNum = sending packet #
-//  dataLen = 
-struct Packet
-{
-  int seqNum;
-  int dataLen;
-  char data[BUFSIZE - 2*sizeof(int)];
-};
-
-void error(char *msg)
-{
-  perror(msg);
-  exit(1);
-}
-
-double rand_percent()
-{
-  return (double)rand() / (double)RAND_MAX;
-}
 
 void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char *filename)
 {
