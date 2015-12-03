@@ -8,7 +8,6 @@
 
 #include "utils.h"
 
-int SEQNUM = 1;
 int PORTNO = 5000;
 double PL = 0.0;
 double PC = 0.0;
@@ -24,8 +23,12 @@ int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
 
 int receiveFile(int sockfd, struct sockaddr_in serveraddr)
 {
+    int expectedSeqNum = 1;
     struct Packet receive_pck;
     struct Packet ack_pck;
+    ack_pck.seqNum = expectedSeqNum;
+    ack_pck.dataLen = 0;
+
     FILE* fp = fopen("filerecv", "a");
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
@@ -41,29 +44,31 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
         if (rand_percent() < PC)
         {
           printf("RECEIVER: Received corrupted DATA\n");
-          // Send ACK?
+          if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+          {
+            printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
+          }
         }
         else if (rand_percent() >= PL)
         {
-            if (receive_pck.seqNum == SEQNUM)
+            if (receive_pck.seqNum == expectedSeqNum)
             {
                 printf("RECEIVER: Received %d bytes for DATA #%d.\n", min(sizeof(receive_pck.data), receive_pck.dataLen), receive_pck.seqNum);
                 fwrite(receive_pck.data, 1, min(sizeof(receive_pck.data), receive_pck.dataLen), fp);
-                ack_pck.seqNum = SEQNUM;
+                ack_pck.seqNum = expectedSeqNum;
                 if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
                 {
                     printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
                 }
-                SEQNUM++;
+                expectedSeqNum++;
             }
             else
             {
-                if (receive_pck.seqNum < SEQNUM)
+                if (receive_pck.seqNum < expectedSeqNum)
                     printf("RECEIVER: Received duplicate DATA #%d.\n", receive_pck.seqNum);
                 else
                     printf("RECEIVER: Received out-of-order DATA #%d.\n", receive_pck.seqNum);
 
-                ack_pck.seqNum = SEQNUM - 1;
                 if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
                 {
                     printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
