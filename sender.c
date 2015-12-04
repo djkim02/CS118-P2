@@ -90,7 +90,7 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
       {
         if (rand_percent() < PC)  // ACK packet is corrupted
         {
-          printf("SENDER: Received a corrupted ACK!\n");
+          printf("SENDER: Received corrupted ACK!\n");
         }
         else if (rand_percent() < PL)   // ACK packet is lost
         {
