@@ -5,6 +5,7 @@
 #include <netdb.h>      // define structures like hostent
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "utils.h"
 
@@ -46,7 +47,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
           printf("RECEIVER: Received corrupted DATA!\n");
           if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
           {
-            printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
+            printf("RECEIVER: Sent ACK #%d.\n", ack_pck.seqNum);
           }
         }
         else if (rand_percent() < PL)   // DATA packet was lost
@@ -62,9 +63,12 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
                 ack_pck.seqNum = expectedSeqNum;
                 if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
                 {
-                    printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
+                    printf("RECEIVER: Sent ACK #%d.\n", ack_pck.seqNum);
                 }
                 expectedSeqNum++;
+                if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
+                    break;
+
             }
             else
             {
@@ -75,18 +79,59 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
 
                 if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
                 {
-                    printf("RECEIVER: Sent ACK #%d to the sender.\n", ack_pck.seqNum);
+                    printf("RECEIVER: Sent ACK #%d.\n", ack_pck.seqNum);
                 }
             }
-
-            if (receive_pck.dataLen < BUFSIZE - 2*sizeof(int))
-                break;
         }
     }
 
-    // When the last ACK is lost...
+    // Terminate connection
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 100000; // 100ms
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(struct timeval));
+    ack_pck.seqNum = FIN;
+    if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+    {
+        printf("RECEIVER: Sent FIN. Waiting for ACK from sender.\n");
+    }
 
-    printf("Successfully received the file!\n");
+    time_t timer;
+    time(&timer);
+    while(1)    // Wait for ACK from the sender
+    {
+        if (time(NULL) > timer + 1)
+        {
+            if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+            {
+                printf("RECEIVER: FIN Timeout! Resent FIN.\n");
+            }
+            time(&timer);
+        }
+        if (recvfrom(sockfd, (void*) &receive_pck, BUFSIZE, 0, (struct sockaddr *) &recv_addr, &recv_addr_len) > 0 && receive_pck.seqNum == ACK_FIN)
+        {
+            printf("RECEIVER: Received ACK. Waiting for FIN from sender.\n");
+            break;
+        }
+    }
+    time(&timer);
+    while(1)    // Wait for FIN from the server
+    {
+        if (time(NULL) > timer + 5)
+        {
+            printf("RECEIVER: Closing\n");
+            break;
+        }
+        if (recvfrom(sockfd, (void*) &receive_pck, BUFSIZE, 0, (struct sockaddr *) &recv_addr, &recv_addr_len) > 0 && receive_pck.seqNum == FIN)
+        {
+            ack_pck.seqNum = ACK_FIN;
+            if (sendto(sockfd, (void*) &ack_pck, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) >= 0)
+            {
+                printf("RECEIVER: Received FIN. Sent ACK.\n");
+            }
+        }
+    }
+
     return 0;
 }
 
