@@ -94,7 +94,7 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
         }
         else if (rand_percent() < PL)   // ACK packet is lost
         {
-          printf("SENDER: ACK #%d was lost!\n", ack_pkt.seqNum)
+          printf("SENDER: ACK #%d was lost!\n", ack_pkt.seqNum);
         }
         else  // ACK packet is received without loss
         {
