@@ -1,8 +1,13 @@
 #define BUFSIZE 1024
 
-// For DATA packets:
-//  seqNum = sending packet #
-//  dataLen = 
+#define START_SEQ_NUM 0
+#define FILE_REQUEST -1
+#define FILE_ERROR -2
+#define FIN -3
+#define ACK_FIN -4
+
+//  seqNum = packet # OR reserved codes
+//  dataLen = byte length of data if DATA packet. 0 otherwise
 struct Packet
 {
   int seqNum;

@@ -15,7 +15,7 @@ double PC = 0.0;
 // Form file request packet
 int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
     struct Packet request_pkt;
-    request_pkt.seqNum = 0;     // Sequence number for request message starts at 0
+    request_pkt.seqNum = FILE_REQUEST;
     request_pkt.dataLen = strlen(filename) + 1;
     memcpy(request_pkt.data, filename, strlen(filename) + 1);
     return sendto(sockfd, &request_pkt, BUFSIZE, 0, (struct sockaddr *) &serveraddr, sizeof(serveraddr));
@@ -23,7 +23,7 @@ int sendFileRequest(int sockfd, struct sockaddr_in serveraddr, char *filename) {
 
 int receiveFile(int sockfd, struct sockaddr_in serveraddr)
 {
-    int expectedSeqNum = 1;
+    int expectedSeqNum = START_SEQ_NUM;
     struct Packet receive_pck;
     struct Packet ack_pck;
     ack_pck.seqNum = expectedSeqNum;
@@ -38,7 +38,7 @@ int receiveFile(int sockfd, struct sockaddr_in serveraddr)
         if (recvfrom(sockfd, (void*) &receive_pck, BUFSIZE, 0, (struct sockaddr *) &recv_addr, &recv_addr_len) < 0)
             error("ERROR: Failed to receive the file\n");
 
-        if (receive_pck.seqNum < 0)
+        if (receive_pck.seqNum == FILE_ERROR)
             return -1;
 
         if (rand_percent() < PC)    // Received corrupted DATA

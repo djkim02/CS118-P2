@@ -29,7 +29,7 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
   struct Packet ack_pkt;
   if (fp == NULL)   // cannot open file
   {
-    pkt.seqNum = -1;  // signals error in filename
+    pkt.seqNum = FILE_ERROR;  // signals error in filename
     pkt.dataLen = 0;
     sendto(sockfd, &pkt, BUFSIZE, 0, (struct sockaddr *) cli_addr, cli_len);
     printf("ERROR opening file\n");
@@ -43,8 +43,8 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
     char *file_buf = (char*)malloc(filesize);
     fread(file_buf, filesize*sizeof(char), sizeof(char), fp);
 
-    int base = 1;
-    int nextSeqNum = 1;
+    int base = START_SEQ_NUM;
+    int nextSeqNum = START_SEQ_NUM;
     int maxDataLen = BUFSIZE - 2*sizeof(int);
     pkt.dataLen = maxDataLen;
     int numPackets = filesize / (BUFSIZE - 2*sizeof(int)) + 1;    // at least 1 packet
@@ -90,9 +90,13 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
       {
         if (rand_percent() < PC)  // ACK packet is corrupted
         {
-          printf("SENDER: Received a corrupted ACK\n");
+          printf("SENDER: Received a corrupted ACK!\n");
         }
-        else if (rand_percent() >= PL)  // ACK packet is received without loss
+        else if (rand_percent() < PL)   // ACK packet is lost
+        {
+          printf("SENDER: ACK #%d was lost!\n", ack_pkt.seqNum)
+        }
+        else  // ACK packet is received without loss
         {
           printf("SENDER: Received ACK #%d\n", ack_pkt.seqNum);
           if (base == ack_pkt.seqNum)
@@ -168,8 +172,11 @@ int main(int argc, char *argv[])
     if (recvlen == -1) {
       error("ERROR on receiving request");
     }
-    printf("SENDER: Received request. Filename: %s\n", pkt.data);
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(struct timeval));
-    sendFile(sockfd, &cli_addr, cli_len, pkt.data);
+    if (pkt.seqNum == FILE_REQUEST)
+    {
+      printf("SENDER: Received request. Filename: %s\n", pkt.data);
+      setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(struct timeval));
+      sendFile(sockfd, &cli_addr, cli_len, pkt.data);
+    }
   }
 }
