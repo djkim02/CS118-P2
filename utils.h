@@ -7,7 +7,7 @@
 #define ACK_FIN -4
 
 //  seqNum = packet # OR reserved codes
-//  dataLen = byte length of data if DATA packet. 0 otherwise
+//  dataLen = bytes left in file if DATA packet. 0 otherwise
 struct Packet
 {
   int seqNum;
