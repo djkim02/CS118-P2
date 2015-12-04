@@ -99,7 +99,7 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
         else  // ACK packet is received without loss
         {
           printf("SENDER: Received ACK #%d\n", ack_pkt.seqNum);
-          if (base == ack_pkt.seqNum)
+          if (base <= ack_pkt.seqNum)
           {
             time(&timer);
           }
@@ -121,7 +121,7 @@ void sendFile(int sockfd, struct sockaddr_in *cli_addr, socklen_t cli_len, char 
         }
       }
     }
-    close(file_buf);
+    free(file_buf);
   }
   fclose(fp);
 }
